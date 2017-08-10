@@ -1,6 +1,6 @@
 import math
 import os
-os.environ['CUDA_VISIBLE_DEVICES']='3'
+os.environ['CUDA_VISIBLE_DEVICES']='2'
 import tensorflow as tf
 import numpy as np
 import pickle
@@ -60,6 +60,7 @@ def main(_):
             
             model = models.SentenceGenerator(sess, conf, datam.vocab_size, datam.num_rel)
             model.build_model()
+            
             model.train(sess, datam, training_data)
         '''    
         else:

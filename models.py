@@ -30,16 +30,17 @@ class SentenceGenerator(object):
         self.vocab_size = vocab_size
         self.num_rel = num_rel
         
-        with tf.variable_scope('generator'):
-            self.rel_embeddings = tf.Variable(self.init_matrix([self.num_rel, self.rel_emb_dim])) # Relation embedding
-            self.g_params.append(self.rel_embeddings)
-            self.g_recurrent_unit = self.create_recurrent_unit(self.g_params)  # maps h_tm1 to h_t for generator
-            # h_tm1 mean h_{t-1}
-            self.g_output_unit = self.create_output_unit(self.g_params, self.vocab_size)  # maps h_t to o_t (output token logits)
-            self.g_embeddings = tf.Variable(self.init_matrix([self.vocab_size, self.emb_dim]))
-            self.g_params.append(self.g_embeddings)
-            self.g_output_unit_entity1 = self.create_output_unit(self.g_params, self.n_lstm_steps)
-            self.g_output_unit_entity2 = self.create_output_unit(self.g_params, self.n_lstm_steps)
+        # with tf.variable_scope('generator'):
+        self.rel_embeddings = tf.Variable(self.init_matrix([self.num_rel, self.rel_emb_dim])) # Relation embedding
+        self.g_params.append(self.rel_embeddings)
+        self.g_recurrent_unit = self.create_recurrent_unit(self.g_params)  # maps h_tm1 to h_t for generator
+        # h_tm1 mean h_{t-1}
+        self.g_output_unit = self.create_output_unit(self.g_params, self.vocab_size, 'output_token')  # maps h_t to o_t (output token logits)
+        self.g_embeddings = tf.Variable(self.init_matrix([self.vocab_size, self.emb_dim]))
+        self.g_params.append(self.g_embeddings)
+        self.g_output_unit_entity1 = self.create_output_unit(self.g_params, self.n_lstm_steps, 'output_entity1')
+        self.g_output_unit_entity2 = self.create_output_unit(self.g_params, self.n_lstm_steps,'output_entity2')
+        pdb.set_trace()
                 
     def build_model(self):
         ######
@@ -87,7 +88,7 @@ class SentenceGenerator(object):
                 '''
                 labels = self.sentence[:, i] # (batch_size)
                 onehot_labels = tf.one_hot(labels, self.vocab_size)
-                pdb.set_trace()
+                # pdb.set_trace()
                 cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=o_t, labels = onehot_labels)
                 cross_entropy = cross_entropy * self.mask[:,i]                             
 
@@ -168,7 +169,7 @@ class SentenceGenerator(object):
         return 
         
     #### Utility functions ####    
-    def init_matrix(self, shape):
+    def init_matrix(self, shape, **kwargs):
         return tf.random_normal(shape, stddev=0.1)
 
     def init_vector(self, shape):
@@ -201,7 +202,10 @@ class SentenceGenerator(object):
             previous_hidden_state, c_prev = tf.unstack(hidden_memory_tm1)
             # pdb.set_trace()
             # Input Gate
-            i = tf.sigmoid(tf.matmul(x, self.Wi) + tf.matmul(previous_hidden_state, self.Ui) + self.bi)
+            i = tf.sigmoid(
+                tf.matmul(x, self.Wi) + 
+                tf.matmul(previous_hidden_state, self.Ui) + self.bi
+            )
 
             # Forget Gate
             f = tf.sigmoid(
@@ -231,15 +235,21 @@ class SentenceGenerator(object):
 
         return unit
 
-    def create_output_unit(self, params, outsize):
-        self.Wo = tf.Variable(self.init_matrix([self.hidden_dim, outsize]))
-        self.bo = tf.Variable(self.init_matrix([outsize]))
-        params.extend([self.Wo, self.bo])
+    def create_output_unit(self, params, outsize, scope_name):
+        with tf.variable_scope(scope_name, reuse=True):
+            # Wo = tf.Variable(self.init_matrix([self.hidden_dim, outsize]), name="Wo")
+            # bo = tf.Variable(self.init_matrix([outsize]), name = "bo")
+            Wo = tf.get_variable(name="Wo", shape=[self.hidden_dim, outsize], initializer=self.init_matrix)
+            bo = tf.get_variable(name="bo", shape=[outsize], initializer=self.init_matrix)
+        params.extend([Wo, bo])
 
         def unit(hidden_memory_tuple):
+            with tf.variable_scope(scope_name):
+                Wo = tf.get_variable(name="Wo")
+                bo = tf.get_variable(name = "bo")
             hidden_state, c_prev = tf.unstack(hidden_memory_tuple)
             # hidden_state : batch x hidden_dim
-            logits = tf.matmul(hidden_state, self.Wo) + self.bo
+            logits = tf.matmul(hidden_state, Wo) + bo
             # output = tf.nn.softmax(logits)
             return logits
 
