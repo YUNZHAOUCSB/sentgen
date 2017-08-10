@@ -12,7 +12,7 @@ class SentenceGenerator(object):
     def __init__(self, sess, conf, vocab_size, num_rel, start_token=0,
                  learning_rate=0.01, reward_gamma=0.95):
         self.sess = sess
-        self.num_epochs = conf['n_epochs']
+        self.n_epochs = conf['n_epochs']
         # self.num_emb = conf['num_emb']
         self.batch_size = conf['batch_size']
         self.rel_emb_dim = conf['rel_embed_dim']
@@ -40,24 +40,29 @@ class SentenceGenerator(object):
         self.g_params.append(self.g_embeddings)
         self.g_output_unit_entity1 = self.create_output_unit(self.g_params, self.n_lstm_steps, 'output_entity1')
         self.g_output_unit_entity2 = self.create_output_unit(self.g_params, self.n_lstm_steps,'output_entity2')
-        pdb.set_trace()
                 
     def build_model(self):
         ######
-        self.rel = tf.placeholder(tf.int32, shape=[self.batch_size]) # Batch of relation seeds
-        self.sentence = tf.placeholder(tf.int32, [self.batch_size, self.n_lstm_steps]) # labels
-        self.mask = tf.placeholder(tf.float32, [self.batch_size, self.n_lstm_steps])
-        self.p1 = tf.placeholder(tf.int32, [self.batch_size]) #p1_locations
-        self.p2 = tf.placeholder(tf.int32, [self.batch_size]) #p2_locations
+        #self.rel = tf.placeholder(tf.int32, shape=[self.batch_size], name='rel') # Batch of relation seeds
+        #self.sentence = tf.placeholder(tf.int32, [self.batch_size, self.n_lstm_steps], name='sentence') # labels
+        #self.mask = tf.placeholder(tf.float32, [self.batch_size, self.n_lstm_steps], name='mask')
+        #self.p1 = tf.placeholder(tf.int32, [self.batch_size], name='p1') #p1_locations
+        #self.p2 = tf.placeholder(tf.int32, [self.batch_size], name = 'p2') #p2_locations
+        
+        self.rel = tf.placeholder(tf.int32, name='rel') # Batch of relation seeds
+        self.sentence = tf.placeholder(tf.int32,  name='sentence') # labels
+        self.mask = tf.placeholder(tf.float32,  name='mask')
+        self.p1 = tf.placeholder(tf.int32,  name='p1') #p1_locations
+        self.p2 = tf.placeholder(tf.int32,  name = 'p2') #p2_locations
         loss = 0.0
         for i in range(self.n_lstm_steps):
-            print("LSTM step i = ", i)
+            # print("LSTM step i = ", i)
             if i==0:
                 # Initial states
                 c_prev = tf.zeros([self.batch_size, self.lstm_state_size]) 
                 h_tm1 = tf.nn.embedding_lookup(self.rel_embeddings, self.rel) # + self.bemb # (batch_size, relation_emb_siz)
-                print('c_prev shape: ', c_prev.get_shape())
-                print('h_tm1 shape: ', h_tm1.get_shape())
+                # print('c_prev shape: ', c_prev.get_shape())
+                # print('h_tm1 shape: ', h_tm1.get_shape())
                 # pdb.set_trace()
                 h_tm1 = tf.stack([h_tm1, c_prev])
                 x_t = tf.nn.embedding_lookup(self.g_embeddings,self.start_token) # start token embedding
@@ -142,32 +147,26 @@ class SentenceGenerator(object):
             # counter = 0
             # Load relevant batch data and set it to feed_dict
             # batch_itrr=
-            for batch_data in batch_iter(training_data):
+            for j, batch_data in enumerate(batch_iter(training_data, self.batch_size)):
                 ## Load batch data
-                relations = generate_x(batch_data)
-                p1, p2 = generate_p(batch_data)
-                sentences, masks = generate_y(batch_data)
-                ##
+                relations = datam.generate_x(batch_data)
+                p1, p2 = datam.generate_p(batch_data)
+                sentences, masks = datam.generate_y(batch_data)
+                # pdb.set_trace()
                 feed_dict ={self.rel: relations,
                            self.sentence: sentences,
                            self.mask: masks,
                            self.p1: p1,
                            self.p2: p2}
-                loss = tf.sess.run(self.loss, feed_dict)
-            if epoch % 5 == 0:
-                print('epoch', epoch, 'loss', loss)
+                # pdb.set_trace()
+                _, loss_value = self.sess.run([train_op, self.loss], feed_dict)
+                if j % 5 == 0:
+                    print('epoch: ', epoch, '| batch: ', j, '| loss', loss_value)
+            if epoch % 1 == 0:
+                print('epoch', epoch, 'loss', loss_value)
             
     
-    def generate_x(self, training_data):
-        return [data.relation_idx for data in training_data]
     
-    def generate_p(self, training_data):
-        return ([data.entity1p for data in training_data], [data.entity2p for data in training_data])
-    
-    def generate_y(self, training_data):
-        
-        return 
-        
     #### Utility functions ####    
     def init_matrix(self, shape, **kwargs):
         return tf.random_normal(shape, stddev=0.1)
@@ -236,7 +235,7 @@ class SentenceGenerator(object):
         return unit
 
     def create_output_unit(self, params, outsize, scope_name):
-        with tf.variable_scope(scope_name, reuse=True):
+        with tf.variable_scope(scope_name):
             # Wo = tf.Variable(self.init_matrix([self.hidden_dim, outsize]), name="Wo")
             # bo = tf.Variable(self.init_matrix([outsize]), name = "bo")
             Wo = tf.get_variable(name="Wo", shape=[self.hidden_dim, outsize], initializer=self.init_matrix)
@@ -244,7 +243,7 @@ class SentenceGenerator(object):
         params.extend([Wo, bo])
 
         def unit(hidden_memory_tuple):
-            with tf.variable_scope(scope_name):
+            with tf.variable_scope(scope_name, reuse=True):
                 Wo = tf.get_variable(name="Wo")
                 bo = tf.get_variable(name = "bo")
             hidden_state, c_prev = tf.unstack(hidden_memory_tuple)

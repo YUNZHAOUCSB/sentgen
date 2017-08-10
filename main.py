@@ -60,8 +60,8 @@ def main(_):
             
             model = models.SentenceGenerator(sess, conf, datam.vocab_size, datam.num_rel)
             model.build_model()
-            
-            model.train(sess, datam, training_data)
+            print('Model built successful')
+            model.train(datam, training_data)
         '''    
         else:
             model.build_generator()

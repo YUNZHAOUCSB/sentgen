@@ -95,9 +95,9 @@ class DataManager:
         seq_data = pd.DataFrame([seq_len, ent1p, ent2p]).T
         seq_data.columns=['sentence_length', 'entity1_pos', 'entity2_pos']
         data_toberemoved = seq_data.loc[(seq_data.sentence_length>num)&((seq_data.entity1_pos>num)|(seq_data.entity2_pos>num))]
-        print('***')
-        print(len(set(data_toberemoved.index)))
-        print(len(data))
+        # print('***')
+        # print(len(set(data_toberemoved.index)))
+        # print(len(data))
         filtered_data = [i for j, i in enumerate(data) if j not in set(data_toberemoved.index)]
         print("Done loading and cleaning training data for Generator.")
         return filtered_data
@@ -189,7 +189,7 @@ class DataManager:
         seq_len = [len(item.words_idx) for item in data] # useful for creating mask
         seq = [item.words_idx for item in data]
         y = self.padding(seq)
-        mask = self.mask(y)                
+        mask = self.masking(y)                
         ##################
         return (y, mask)
     
@@ -198,11 +198,12 @@ class DataManager:
     
     ########## Misc stuff ##########
     ################################
-    def mask(self, padded_seq):
+    
+    def masking(self, padded_seq):
         updated_vectors = []
         for seq in padded_seq:
-            new_seq = [0 if x == self.word2id['PAD'] else 1 for x in seq]
-            updated_vectors.append(seq)
+            new_seq = [0.0 if x == self.word2id['PAD'] else 1.0 for x in seq]
+            updated_vectors.append(new_seq)
         return updated_vectors
     
     def padding(self, vectors):
@@ -218,7 +219,7 @@ class DataManager:
                 front_vec = []
                 # back_vec = [np.zeros(self.wordvector_dim) for i in range(back)]
                 back_vec = [pad_token_id]*back
-                vectors = front_vec + vector + back_vec
+                vector = front_vec + vector + back_vec
             else:
                 vector = vector[:self.sequence_length] # TRUNCATING
             updated_vectors.append(vector)
