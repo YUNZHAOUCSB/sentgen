@@ -6,77 +6,61 @@ import numpy as np
 import pickle
 import pprint
 import tensorflow.python.platform
-from keras.preprocessing import sequence
-# from dataloader import *
-from dataloader import Gen_data_loader, Dis_data_loader
+# from keras.preprocessing import sequence
 from dataloader import DataManager
-
-
+import pdb
+import models
+import utils
+import time
 
 flags = tf.app.flags
 pp = pprint.PrettyPrinter().pprint
-'''
-tf.app.flags.DEFINE_string('input_ques_h5', './data_prepro.h5', 'path to the h5file containing the preprocessed dataset')
-tf.app.flags.DEFINE_string('input_json', './data_prepro.json', 'path to the json file containing additional info and vocab')
-tf.app.flags.DEFINE_string('model_path', './models/', 'where should we save')
-tf.app.flags.DEFINE_string('vgg_path', './vgg16.tfmodel', 'momentum for adam')
-tf.app.flags.DEFINE_string('gpu_fraction', '2/3', 'define the gpu fraction used')
-tf.app.flags.DEFINE_string('test_image_path', './assets/demo.jpg', 'the image you want to generate question')
-tf.app.flags.DEFINE_string('test_model_path', './models/model-250', 'model we saved')
 
-tf.app.flags.DEFINE_integer('batch_size', 256, 'tch_size for each iterations')
-tf.app.flags.DEFINE_integer('dim_embed', 50, 'word embedding size')
-tf.app.flags.DEFINE_integer('dim_hidden', 100, 'hidden size')
-tf.app.flags.DEFINE_integer('maxlen', 26, 'max length of sentence')
+data_dir = '/home/rohanjain/data/sentgen/'
+# tf.app.flags.DEFINE_string('data_dir', '/home/rohanjain/data/sentgen/', 'where should we save')
+# pdb.set_trace()
+tf.app.flags.DEFINE_string('training_file', os.path.join(data_dir, 'RE/train.txt'), 'where should we save')
+tf.app.flags.DEFINE_string('word2vec_file', os.path.join(data_dir, 'vec.txt'), 'where should we save')
+tf.app.flags.DEFINE_string('relation2id_file', os.path.join(data_dir, 'RE/relation2id.txt'), 'where should we save')
+tf.app.flags.DEFINE_string('entity2id_file', os.path.join(data_dir, 'RE/entity2id.txt'), 'where should we save')
+tf.app.flags.DEFINE_string('vocab2id_file', './vocab2id.txt', 'where should we save')
+
+
+tf.app.flags.DEFINE_string('model_path', './models/', 'where should we save')
+tf.app.flags.DEFINE_integer('batch_size', 256, 'batch_size for each iterations')
+tf.app.flags.DEFINE_integer('rel_embed_dim', 100, 'word embedding size')
+tf.app.flags.DEFINE_integer('embed_dim', 50, 'word embedding size')
+tf.app.flags.DEFINE_integer('hidden_dim', 100, 'hidden size')
+tf.app.flags.DEFINE_integer('sequence_length', 100, 'max length of sentence')
 tf.app.flags.DEFINE_integer('n_epochs', 250, 'how many epochs are we going to train')
 tf.app.flags.DEFINE_float('learning_rate', '0.001', 'learning rate for adam')
 tf.app.flags.DEFINE_float('momentum', 0.9, 'momentum for adam')
+tf.app.flags.DEFINE_float('ss_threshold', 0.5, 'scheduled sampling threshold prob')
 tf.app.flags.DEFINE_boolean('is_train', 'True', 'momentum for adam')
 
 attrs = flags.FLAGS
-'''
-
-#########################################################################################
-#  Generator  Hyper-parameters
-######################################################################################
-EMB_DIM = 32 # embedding dimension
-HIDDEN_DIM = 32 # hidden state dimension of lstm cell
-SEQ_LENGTH = 20 # sequence length
-START_TOKEN = 0
-PRE_EPOCH_NUM = 120 # supervise (maximum likelihood estimation) epochs
-SEED = 88
-BATCH_SIZE = 64
-
-#########################################################################################
-#  Basic Training Parameters
-#########################################################################################
-TOTAL_BATCH = 200
-# positive_file = 'save/real_data.txt'
-training_file = 'save/real_data.txt'
-negative_file = 'save/generator_sample.txt'
-eval_file = 'save/eval_file.txt'
-generated_num = 10000
-#vocab_size = 5000 # should be set in dataloader
-
-conf['word2vec_file'] = os.path.join(data_dir, 'vec.txt')
-conf['relation2id_file'] = os.path.join(data_dir, 'RE/relation2id.txt')
-conf['entity2id_file'] = os.path.join(data_dir, 'RE/entity2id.txt')
-conf['sequence_length'] = 100
-conf['vocab2id_file'] = './vocab2id.txt'
-conf['training_file'] = os.path.join(data_dir, 'RE/train.txt')
 
 def main(_):
     conf = attrs.__dict__['__flags']
     pp(conf)
 
     with tf.Session() as sess:
-        model = model.SentenceGenerator(sess, conf) # change the arguments
+        # model = models.SentenceGenerator(sess, conf) # change the arguments
 
-        if conf.is_train:
-            datam=Datamanager(conf)
-            # training_data=datam.load_training_data_for_Gen(training_file, relation2id_file, word2id_file)
-            model.build_model(datam.vocab_size)
-            model.train(sess, datam)
+        if conf['is_train']:
+            datam=DataManager(conf)
+            
+            start_time = time.time()
+            training_data=datam.load_training_data_for_Gen()
+            print("Time taken to load  and clean data: {}".format(time.time()-start_time))
+            # utils.pickle_write(training_data, './training_data.pkl')
+            
+            # print('loading previously prepared training data')
+            # training_data = utils.pickle_read('./training_data.pkl')
+            
+            model = models.SentenceGenerator(sess, conf, datam.vocab_size, datam.num_rel)
+            model.build_model()
+            model.train(sess, datam, training_data)
         '''    
         else:
             model.build_generator()

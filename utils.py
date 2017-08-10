@@ -1,5 +1,9 @@
 import numpy as np
 import re
+import h5py
+import json
+import pickle
+# import cPickle as pickle
 
 def clean_str(string):
     """
@@ -43,4 +47,31 @@ def batch_iter(data, batch_size, shuffle=True):
         else:
             yield list(shuffled_data[start_index:end_index])
             
+def hdf5_write(arr,label,outfile):
+    with h5py.File(outfile,"w") as f:
+        f.create_dataset(label, data=arr, dtype=arr.dtype)
+    
+def hdf5_read(label,infile):
+    with h5py.File(infile,"r") as f:
+        arr = f[label][:]
+    return arr
 
+# https://www.safaribooksonline.com/library/view/python-cookbook-3rd/9781449357337/ch06s02.html
+def json_read(path):
+    with open(path, 'r') as f:
+        data = json.load(f)
+    return data
+
+def json_write(data, json_path):
+    with open(json_path, 'w') as f:
+        json.dump(data, f)
+        
+def pickle_read(infile):
+    with open(infile, "rb") as f:
+        data = pickle.load(f)
+    return data
+        
+def pickle_write(data, outfile):
+    with open(outfile, "wb") as f:
+        pickle.dump(data, f)
+        

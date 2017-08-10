@@ -6,6 +6,7 @@ from utils_training_gen import Relation, Sentence, Training_sample
 import re
 from nltk.tokenize import wordpunct_tokenize
 import pdb
+import pandas as pd
 
 
 class DataManager:
@@ -21,51 +22,9 @@ class DataManager:
         self.entity2id_file = conf['entity2id_file']
         self.word2vec_file = conf['word2vec_file']
         self.vocab2id_file = conf['vocab2id_file']
-        
-        self.load_relations()
-        self.load_word2vec()
-        
-        
-
-    def load_word2vec(self):
-        #load word2vec from file
-        #Two data structure: word2index, index2vector
-        # wordvector = list(open("../data/vector1.txt", "r").readlines())
-        wordvector = list(open(self.word2vec_file, "r").readlines())
-        wordvector = [s.split() for s in wordvector]
-        ###### New line added to remove the first line from word2vec file
-        _ = wordvector.pop(0)
-        ######
-        self.wordvector_dim = len(wordvector[0])-1
-        self.word2index["UNK"] = 0
-        #################
-        self.index2vector.append(np.zeros(self.wordvector_dim)) ### Might want to put random
-        #################
-        index = 1
-        for vec in wordvector:
-            a = np.zeros(self.wordvector_dim)
-            for i in range(self.wordvector_dim):
-                a[i] = float(vec[i+1])
-            self.word2index[vec[0]] = index
-            self.index2vector.append(a)
-            index += 1
-
-        print("WordTotal: ", len(self.index2vector))
-        print("Word dimension: ", self.wordvector_dim)
-
-    def load_relations(self):
-        #load relation from file
-        # relation_data = list(open("../data/RE/relation2id.txt").readlines())
-        relation_data = list(open(self.relation2id_file).readlines())
-        relation_data = [s.split() for s in relation_data]
-        for relation in relation_data:
-            r = Relation(relation[0], int(relation[1]))
-            self.relations[relation[0]] = r
-        for r in self.relations:
-            self.relations[r].generate_vector(len(self.relations)) # Generates one-hot representation
-        print("RelationTotal: "+str(len(self.relations)))
 
     def load_training_data_for_Gen(self):
+        print("Start loading training data for Generator.")
         training_data = []
         #########################################################################################
         #calculate the entity locations from Sentence object
@@ -84,46 +43,64 @@ class DataManager:
                     l2 = i
             return (l1,l2)        
         #########################################################################################
-        print("Start loading training data for Generator.")
-        print("====================")
         training_data = list(open(self.training_file).readlines())
         training_data = [s.split() for s in training_data]
         # training_data = [wordpunct_tokenize(s) for s in training_data]
+        ############### load relations ##################
         relation_data = list(open(self.relation2id_file).readlines())
         relation_data = [s.split() for s in relation_data]
-        word_id = list(open(self.vocab2id_file).readlines())
-        word_id = [s.split() for s in word_id]
-        relation2id = {}
+        self.relation2id = {}
         for relation in relation_data:
-            relation2id[relation[0]]=relation[1]
-        word2id={}
+            self.relation2id[relation[0]]=relation[1]
+        print("RelationTotal: "+str(len(self.relation2id)))
+        self.num_rel = len(self.relation2id)
+        ############### load words ######################
+        word_id = list(open(self.vocab2id_file).readlines())
+        word_id = [s.split() for s in word_id]        
+        self.word2id={}
         for word in word_id:
-            word2id[word[0]]=word[1]
+            self.word2id[word[0]]=word[1]
+        self.vocab_size = len(self.word2id.keys())
+        ##############   Get words2index for each training sample    ####################
         return_data=[]
         for data in training_data:
             ## Get the positions of entities
             entity1p,entity2p=get_entity_loc(data[2], data[3], data[5:-1])
             ## Relation
-            if data[4] not in relation2id.keys():
-                relation_idx = relation2id["NA"]
+            if data[4] not in self.relation2id.keys():
+                relation_idx = self.relation2id["NA"]
             else:
-                relation_idx = relation2id[data[4]]    
+                relation_idx = self.relation2id[data[4]]    
             #Get the word_idx
             words2index=[]
             # for word in clean_str(str(data[5:-1])).split():
             for word in data[5:-1]:
-                if word not in word2id.keys():
+                if word not in self.word2id.keys():
                     word = 'UNK'
-                words_idx=word2id[word]
+                words_idx=self.word2id[word]
                 words2index.append(words_idx)            
-            words2index=[int(word) for word in words2index]
-            #words2index=self.padding(words2index)
+            words2index=[int(word) for word in words2index]           
             # Finally !
             training_sample = Training_sample(relation_idx,words2index,entity1p,entity2p)
             return_data.append(training_sample)
         # return return_data.__iter__()
-        return return_data
+        return self.clean_data(return_data)
 
+    def clean_data(self, data):
+        print("Start cleaning training data for Generator.")
+        num = self.sequence_length
+        seq_len = [len(item.words_idx) for item in data]
+        ent1p = [item.entity1p for item in data]
+        ent2p = [item.entity2p for item in data]
+        seq_data = pd.DataFrame([seq_len, ent1p, ent2p]).T
+        seq_data.columns=['sentence_length', 'entity1_pos', 'entity2_pos']
+        data_toberemoved = seq_data.loc[(seq_data.sentence_length>num)&((seq_data.entity1_pos>num)|(seq_data.entity2_pos>num))]
+        print('***')
+        print(len(set(data_toberemoved.index)))
+        print(len(data))
+        filtered_data = [i for j, i in enumerate(data) if j not in set(data_toberemoved.index)]
+        print("Done loading and cleaning training data for Generator.")
+        return filtered_data
     
     def load_training_data(self, entity2id_file, filename="../data/RE/train.txt", distant_supervision=True):
         """
@@ -207,29 +184,45 @@ class DataManager:
     
     def generate_p(self, data):
         return ([elem.entity1p for elem in data], [elem.entity2p for elem in data])
-    def generate_y(self, data)
+    def generate_y(self, data):
         ##################
-        
+        seq_len = [len(item.words_idx) for item in data] # useful for creating mask
+        seq = [item.words_idx for item in data]
+        y = self.padding(seq)
+        mask = self.mask(y)                
         ##################
-        return (y, padding)
+        return (y, mask)
     
     def word2num(self, words):
         return [words2index[w] for w in words]
     
     ########## Misc stuff ##########
     ################################
+    def mask(self, padded_seq):
+        updated_vectors = []
+        for seq in padded_seq:
+            new_seq = [0 if x == self.word2id['PAD'] else 1 for x in seq]
+            updated_vectors.append(seq)
+        return updated_vectors
+    
     def padding(self, vectors):
-        a = self.sequence_length-len(vectors)
-        if a > 0:
-            # front = a/2
-            front = a//2
-            back = a-front
-            front_vec = [np.zeros(self.wordvector_dim) for i in range(front)]
-            back_vec = [np.zeros(self.wordvector_dim) for i in range(back)]
-            vectors = front_vec + vectors + back_vec
-        else:
-            vectors = vectors[:self.sequence_length] # TRUNCATING
-        return vectors
+        updated_vectors = []
+        for vector in vectors:
+            a = self.sequence_length-len(vector)
+            if a > 0:
+                # front = a/2
+                front = 0
+                back = a-front
+                pad_token_id = self.word2id['PAD']
+                # front_vec = [np.zeros for i in range(front)]
+                front_vec = []
+                # back_vec = [np.zeros(self.wordvector_dim) for i in range(back)]
+                back_vec = [pad_token_id]*back
+                vectors = front_vec + vector + back_vec
+            else:
+                vector = vector[:self.sequence_length] # TRUNCATING
+            updated_vectors.append(vector)
+        return updated_vectors
     
     def batch_iter_old(self, data, batch_size, num_epochs, shuffle=False):
         """
