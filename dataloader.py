@@ -12,20 +12,19 @@ import pandas as pd
 class DataManager:
     def __init__(self, conf):
         self.wordvector_dim = 50 # should be 50. should be read from vec.txt
-        self.sequence_length = conf['sequence_length']
+        self.sequence_length = conf.sequence_length
         self.word2index = {}
         self.index2vector = []
         self.relations = {}
         
-        self.training_file = conf['training_file']
-        self.relation2id_file = conf['relation2id_file']
-        self.entity2id_file = conf['entity2id_file']
-        self.word2vec_file = conf['word2vec_file']
-        self.vocab2id_file = conf['vocab2id_file']
+        self.training_file = conf.training_file
+        self.relation2id_file = conf.relation2id_file
+        self.entity2id_file = conf.entity2id_file
+        self.word2vec_file = conf.word2vec_file
+        self.vocab2id_file = conf.vocab2id_file
 
     def load_training_data_for_Gen(self):
-        print("Start loading training data for Generator.")
-        training_data = []
+        print("Start loading raw training data for Generator.")
         #########################################################################################
         #calculate the entity locations from Sentence object
         #########################################################################################
@@ -49,18 +48,18 @@ class DataManager:
         ############### load relations ##################
         relation_data = list(open(self.relation2id_file).readlines())
         relation_data = [s.split() for s in relation_data]
-        self.relation2id = {}
+        self.relation2id = {} #******#
         for relation in relation_data:
             self.relation2id[relation[0]]=relation[1]
         print("RelationTotal: "+str(len(self.relation2id)))
-        self.num_rel = len(self.relation2id)
+        self.num_rel = len(self.relation2id) #******#
         ############### load words ######################
         word_id = list(open(self.vocab2id_file).readlines())
         word_id = [s.split() for s in word_id]        
-        self.word2id={}
+        self.word2id={} #******#
         for word in word_id:
             self.word2id[word[0]]=word[1]
-        self.vocab_size = len(self.word2id.keys())
+        self.vocab_size = len(self.word2id.keys()) #******#
         ##############   Get words2index for each training sample    ####################
         return_data=[]
         for data in training_data:
@@ -84,10 +83,16 @@ class DataManager:
             training_sample = Training_sample(relation_idx,words2index,entity1p,entity2p)
             return_data.append(training_sample)
         # return return_data.__iter__()
-        return self.clean_data(return_data)
+        return (self.clean_data(return_data), self.relation2id, self.word2id)
 
+    def set_relationword_id(self, relation2id, word2id):
+        self.relation2id = relation2id
+        self.word2id = word2id
+        self.vocab_size = len(self.word2id.keys())
+        self.num_rel = len(self.relation2id.keys())
+    
     def clean_data(self, data):
-        print("Start cleaning training data for Generator.")
+        print("Start cleaning raw training data for Generator.")
         num = self.sequence_length
         seq_len = [len(item.words_idx) for item in data]
         ent1p = [item.entity1p for item in data]

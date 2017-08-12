@@ -39,6 +39,7 @@ def batch_iter(data, batch_size, shuffle=True):
         shuffled_data = data[shuffle_indices]
     else:
         shuffled_data = data
+    '''
     for batch_num in range(num_batches_per_epoch):
         start_index = batch_num * batch_size
         end_index = min((batch_num + 1) * batch_size, data_size)
@@ -46,7 +47,12 @@ def batch_iter(data, batch_size, shuffle=True):
             continue
         else:
             yield list(shuffled_data[start_index:end_index])
-            
+     '''
+    for start_index, end_index in zip( \
+                    range(0, data_size, batch_size),
+                    range(batch_size, data_size, batch_size)
+                    ):
+        yield list(shuffled_data[start_index:end_index])
 def hdf5_write(arr,label,outfile):
     with h5py.File(outfile,"w") as f:
         f.create_dataset(label, data=arr, dtype=arr.dtype)

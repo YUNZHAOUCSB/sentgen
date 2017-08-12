@@ -1,6 +1,6 @@
 import math
 import os
-os.environ['CUDA_VISIBLE_DEVICES']='2'
+os.environ['CUDA_VISIBLE_DEVICES']='1'
 import tensorflow as tf
 import numpy as np
 import pickle
@@ -12,61 +12,63 @@ import pdb
 import models
 import utils
 import time
+import argparse
 
-flags = tf.app.flags
-pp = pprint.PrettyPrinter().pprint
+parser = argparse.ArgumentParser(description='SENTGEN: Generator pretraining and generating')
 
 data_dir = '/home/rohanjain/data/sentgen/'
-# tf.app.flags.DEFINE_string('data_dir', '/home/rohanjain/data/sentgen/', 'where should we save')
-# pdb.set_trace()
-tf.app.flags.DEFINE_string('training_file', os.path.join(data_dir, 'RE/train.txt'), 'where should we save')
-tf.app.flags.DEFINE_string('word2vec_file', os.path.join(data_dir, 'vec.txt'), 'where should we save')
-tf.app.flags.DEFINE_string('relation2id_file', os.path.join(data_dir, 'RE/relation2id.txt'), 'where should we save')
-tf.app.flags.DEFINE_string('entity2id_file', os.path.join(data_dir, 'RE/entity2id.txt'), 'where should we save')
-tf.app.flags.DEFINE_string('vocab2id_file', './vocab2id.txt', 'where should we save')
 
+parser.add_argument('--training_file', default=os.path.join(data_dir, 'RE/train.txt'), type=str, help='training_file')
+parser.add_argument('--word2vec_file', default=os.path.join(data_dir, 'vec.txt'), type=str, help='where should we save')
+parser.add_argument('--relation2id_file', default=os.path.join(data_dir, 'RE/relation2id.txt'), type=str, help='where should we save')
+parser.add_argument('--entity2id_file', default=os.path.join(data_dir, 'RE/entity2id.txt'), type=str, help='where should we save')
+parser.add_argument('--vocab2id_file', default='./vocab2id.txt', type=str, help='where should we save')
+parser.add_argument('--outfile', default='./generated_sentences.txt', type=str, help='where should we save generated sentences')
 
-tf.app.flags.DEFINE_string('model_path', './models/', 'where should we save')
-tf.app.flags.DEFINE_integer('batch_size', 256, 'batch_size for each iterations')
-tf.app.flags.DEFINE_integer('rel_embed_dim', 100, 'word embedding size')
-tf.app.flags.DEFINE_integer('embed_dim', 50, 'word embedding size')
-tf.app.flags.DEFINE_integer('hidden_dim', 100, 'hidden size')
-tf.app.flags.DEFINE_integer('sequence_length', 100, 'max length of sentence')
-tf.app.flags.DEFINE_integer('n_epochs', 250, 'how many epochs are we going to train')
-tf.app.flags.DEFINE_float('learning_rate', '0.001', 'learning rate for adam')
-tf.app.flags.DEFINE_float('momentum', 0.9, 'momentum for adam')
-tf.app.flags.DEFINE_float('ss_threshold', 0.5, 'scheduled sampling threshold prob')
-tf.app.flags.DEFINE_boolean('is_train', 'True', 'momentum for adam')
+parser.add_argument('--model_path', default='./models/', type=str, help='where should we save')
+parser.add_argument('--batch_size', default=256, type=int, help='batch_size for each iterations')
+# parser.add_argument('--rel_embed_dim', default=120, type=int, help='word embedding size')
+parser.add_argument('--embed_dim', default=50, type=int, help='word embedding size')
+parser.add_argument('--hidden_dim', default=120, type=int, help='hidden size')
+parser.add_argument('--sequence_length', default=100, type=int, help='max length of sentence')
+parser.add_argument('--n_epochs', default=250, type=int, help='how many epochs are we going to train')
+parser.add_argument('--vocab_size', default=5003, type=int, help='total vocabulary size including PAS, UNK and START')
+parser.add_argument('--num_rel', default=53, type=int, help='total number of relation including UNK')
+parser.add_argument('--learning_rate', '--lr', default=0.001, type=float, help='learning rate for adam')
+parser.add_argument('--momentum', default=0.9, type=float, help='momentum for adam')
+parser.add_argument('--ss_threshold', default=0.5, type=float, help='scheduled sampling threshold prob')
+parser.add_argument('--e','--evaluate', dest='evaluate', action='store_true', help='To train or to evaluate/sample')
+parser.add_argument('--prepro','--preprocessed', '--load_preprocessed_training_data', dest='preprocessed', action='store_true', help='whether to preprocess raw training data')
+parser.add_argument('--pretrained', dest='pretrained', action='store_true', help='use pre-trained model')
 
-attrs = flags.FLAGS
-
-def main(_):
-    conf = attrs.__dict__['__flags']
-    pp(conf)
-
+def main(_):    
+    global args, best_prec1
+    conf = parser.parse_args()
     with tf.Session() as sess:
-        # model = models.SentenceGenerator(sess, conf) # change the arguments
-
-        if conf['is_train']:
-            datam=DataManager(conf)
-            
-            start_time = time.time()
-            training_data=datam.load_training_data_for_Gen()
-            print("Time taken to load  and clean data: {}".format(time.time()-start_time))
-            # utils.pickle_write(training_data, './training_data.pkl')
-            
-            # print('loading previously prepared training data')
-            # training_data = utils.pickle_read('./training_data.pkl')
-            
-            model = models.SentenceGenerator(sess, conf, datam.vocab_size, datam.num_rel)
+        model = models.SentenceGenerator(sess, conf)
+        datam=DataManager(conf)   
+        if not conf.evaluate:         
+            if conf.preprocessed:
+                start_time = time.time()
+                training_data, relation2id, word2id = datam.load_training_data_for_Gen()
+                print("Time taken to load  and clean training data: {}".format(time.time()-start_time))
+                utils.pickle_write([training_data, relation2id, word2id], './training_data.pkl')
+            else:
+                print('Loading preprocessed training data...')
+                training_data, relation2id, word2id = utils.pickle_read('./training_data.pkl')
+                assert conf.num_rel == len(relation2id.keys())
+                assert conf.vocab_size == len(word2id.keys())
+                datam.set_relationword_id(relation2id, word2id)
             model.build_model()
             print('Model built successful')
-            model.train(datam, training_data)
-        '''    
+            model.train(datam, training_data)            
         else:
+            start_time = time.time()
+            testing_data, relation2id, word2id = datam.load_testing_data_for_Gen()
+            print("Time taken to load and clean testing data: {}".format(time.time()-start_time))
             model.build_generator()
-            model.test(test_image_path=conf.test_image_path, model_path=conf.test_model_path, maxlen=26)
-        '''
+            # model.test(datam, testing_data)
+        
     '''
     random.seed(SEED)
     np.random.seed(SEED)
